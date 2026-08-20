@@ -94,6 +94,7 @@ class PumpSignal:
     target_zone: str = ""
     stop_loss: str = ""
     chances: str = ""
+    candle_pattern: str = ""
 
 # ============================================
 # PROFESSIONAL SCALPER AI PROMPT
@@ -386,6 +387,69 @@ class MEXCGainersBot:
         
         return pump_percent, open_price, close, low_wick_ratio, high_wick_ratio
 
+    def detect_candle_pattern(self, ohlcv: List, pump_percent: float, low_wick: float, high_wick: float) -> str:
+        """Detect pure price action candle patterns (no indicators)"""
+        if not ohlcv or len(ohlcv) < 2:
+            return "Unknown Structure"
+            
+        latest = ohlcv[-1]
+        prev = ohlcv[-2] if len(ohlcv) > 1 else latest
+        
+        open_p = latest[1]
+        high = latest[2]
+        low = latest[3]
+        close = latest[4]
+        
+        prev_close = prev[4]
+        prev_open = prev[1]
+        
+        body = abs(close - open_p)
+        total_range = high - low
+        
+        # Calculate body percentage of range
+        body_pct = (body / total_range * 100) if total_range > 0 else 50
+        
+        # Determine pattern based on pure price action
+        if pump_percent >= 20:
+            if low_wick > 2.0 and high_wick < 0.5:
+                return "Massive Bullish Hammer / Strong Rejection from Lows"
+            elif high_wick > 1.5:
+                return "Violent Spike with Heavy Upper Wick Rejection"
+            else:
+                return "Explosive Bullish Momentum (Very Strong)"
+                
+        elif pump_percent >= 15:
+            if low_wick > 1.8 and high_wick < 0.6:
+                return "Strong Bullish Rejection (Strong Lower Wick)"
+            elif high_wick > 1.2:
+                return "Violent Pump with Upper Rejection"
+            elif body_pct > 80:
+                return "Powerful Bullish Marubozu (Almost No Wicks)"
+            else:
+                return "Explosive Bullish Momentum"
+                
+        elif pump_percent >= 10:
+            if body_pct > 75 and low_wick < 0.4:
+                return "Strong Bullish Body (Minimal Lower Wick)"
+            elif low_wick > 1.5:
+                return "Bullish with Strong Support Wick"
+            elif high_wick > 1.0:
+                return "Bullish with Selling Pressure at Highs"
+            elif body_pct > 65:
+                return "Solid Bullish Continuation"
+            else:
+                return "Bullish Engulfing Style Move"
+                
+        else:
+            if high_wick > 1.3 and low_wick < 0.5:
+                return "Rejection at Resistance"
+            elif low_wick > 1.8:
+                return "Strong Support Test (Long Lower Wick)"
+            elif body_pct > 70:
+                return "Moderate Bullish Body"
+            else:
+                return "Moderate Bullish Move"
+
     async def get_ticker(self, symbol: str) -> Optional[Dict]:
         """Get current ticker data"""
         try:
@@ -549,6 +613,7 @@ class MEXCGainersBot:
                 f"💰 **Price:** ${signal.current_price:,.8f}\n"
                 f"📊 **24h Vol:** ${signal.volume_24h:,.0f}\n\n"
                 f"**CANDLE STRUCTURE**\n"
+                f"Pattern: {getattr(signal, 'candle_pattern', 'Bullish Move')}\n"
                 f"Low Wick: {wick_emoji} {signal.low_wick:.2f}x body\n"
                 f"High Wick: {signal.high_wick:.2f}x body\n\n"
                 f"**SCALPER ANALYSIS**\n"
@@ -601,6 +666,8 @@ class MEXCGainersBot:
                 return None
                 
             # Create signal
+            candle_pattern = self.detect_candle_pattern(ohlcv, pump_percent, low_wick, high_wick)
+            
             signal = PumpSignal(
                 symbol=symbol,
                 timeframe=timeframe,
@@ -613,6 +680,8 @@ class MEXCGainersBot:
                 close_price=round(close_p, 8),
                 timestamp=datetime.now()
             )
+            # Store candle pattern for AI prompt
+            signal.candle_pattern = candle_pattern
             
             # Get AI opinion
             if Config.AI_ENABLED:
